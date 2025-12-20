@@ -1,14 +1,15 @@
-from fastapi import HTTPException, status
-from app.db.usage import get_usage
+from fastapi import HTTPException, status, Depends
+from app.db.connection import get_db
+from app.db.crud_operations import get_usage
 from app.core.plans import get_daily_limit
 
 
-def enforce_usage(user):
+def enforce_usage(user, db=Depends(get_db)):
     if user["role"] == "admin":
         return
 
-    usage = get_usage(user["uid"])
-    used = usage["messages_used"] if usage else 0
+    usage = get_usage(db, user["uid"])
+    used = usage.messages_used if usage else 0
 
     limit = get_daily_limit(user["plan"])
 
