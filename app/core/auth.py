@@ -5,9 +5,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.core.config import FIREBASE_CREDENTIALS_PATH
 
-# Initialize Firebase Admin SDK (runs once)
-cred = credentials.Certificate(FIREBASE_CREDENTIALS_PATH)
-firebase_admin.initialize_app(cred)
+if not firebase_admin._apps:
+    cred = credentials.Certificate(FIREBASE_CREDENTIALS_PATH)
+    firebase_admin.initialize_app(cred)
 
 security = HTTPBearer()
 
@@ -16,8 +16,11 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
     """
-    Verifies Firebase ID token and returns user info
+    - Verifies Firebase ID token
+    - Extracts user identity
+    - Adds role and plan from Firebase custom claims
     """
+
     token = credentials.credentials
 
     try:
@@ -28,20 +31,25 @@ def get_current_user(
             detail="Invalid or expired authentication token",
         )
 
+    # Get user record to access custom claims
+    try:
+        user_record = auth.get_user(decoded_token["uid"])
+        custom_claims = user_record.custom_claims or {}
+        role = custom_claims.get("role", "user")
+    except Exception:
+        role = decoded_token.get("role", "user")
+
     return {
         "uid": decoded_token["uid"],
         "email": decoded_token.get("email"),
+        "role": role,
+        "plan": "FREE",  # temporary, later loaded from DB
     }
 
 
 def require_user(user=Depends(get_current_user)):
     """
-    Ensures the request is authenticated
+    Semantic alias.
+    Explicitly says: this endpoint requires authentication.
     """
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Login required to access this resource",
-        )
-
     return user
